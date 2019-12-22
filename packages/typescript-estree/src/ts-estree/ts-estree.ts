@@ -445,6 +445,7 @@ export type TSUnaryExpression =
   | TSTypeAssertion
   | UnaryExpression
   | UpdateExpression;
+export type TypeAssertion = TSAsExpression | TSTypeAssertion;
 export type TypeElement =
   | TSCallSignatureDeclaration
   | TSConstructSignatureDeclaration
@@ -1598,6 +1599,10 @@ export interface TSUnknownKeyword extends BaseNode {
 
 export interface TSVoidKeyword extends BaseNode {
   type: AST_NODE_TYPES.TSVoidKeyword;
+}
+
+export interface UndefinedIdentifier extends Identifier {
+  name: 'undefined';
 }
 
 export interface UpdateExpression extends UnaryExpressionBase {

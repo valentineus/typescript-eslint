@@ -254,3 +254,7 @@ export function getTokenAtPosition(
   }
   return current!;
 }
+
+export function isAnyType(type: ts.Type): boolean {
+  return isTypeFlagSet(type, ts.TypeFlags.Any);
+}

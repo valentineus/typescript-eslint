@@ -31,7 +31,7 @@ function isNotNonNullAssertionPunctuator(
 /**
  * Returns true if and only if the node represents: foo?.() or foo.bar?.()
  */
-function isOptionalOptionalChain(
+function isOptionalOptionalCallExpression(
   node: TSESTree.Node,
 ): node is TSESTree.OptionalCallExpression {
   return (
@@ -68,7 +68,7 @@ function isTokenOnSameLine(
  */
 function isTypeAssertion(
   node: TSESTree.Node | undefined | null,
-): node is TSESTree.TSAsExpression | TSESTree.TSTypeAssertion {
+): node is TSESTree.TypeAssertion {
   if (!node) {
     return false;
   }
@@ -78,14 +78,40 @@ function isTypeAssertion(
   );
 }
 
+/**
+ * Checks if a node is the null literal
+ */
+function isNullLiteral(
+  node: TSESTree.Node | undefined | null,
+): node is TSESTree.NullLiteral {
+  if (!node) {
+    return false;
+  }
+  return node.type === AST_NODE_TYPES.Literal && node.value === null;
+}
+
+/**
+ * Checks if a node is the undefined identifier
+ */
+function isUndefinedIdentifier(
+  node: TSESTree.Node | undefined | null,
+): node is TSESTree.UndefinedIdentifier {
+  if (!node) {
+    return false;
+  }
+  return node.type === AST_NODE_TYPES.Identifier && node.name === 'undefined';
+}
+
 export {
-  isTypeAssertion,
+  isLogicalOrOperator,
   isNonNullAssertionPunctuator,
   isNotNonNullAssertionPunctuator,
   isNotOptionalChainPunctuator,
+  isNullLiteral,
   isOptionalChainPunctuator,
-  isOptionalOptionalChain,
+  isOptionalOptionalCallExpression as isOptionalOptionalChain,
   isTokenOnSameLine,
-  isLogicalOrOperator,
+  isTypeAssertion,
+  isUndefinedIdentifier,
   LINEBREAK_MATCHER,
 };
