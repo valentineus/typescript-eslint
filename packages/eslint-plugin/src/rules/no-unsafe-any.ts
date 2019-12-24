@@ -1,24 +1,31 @@
-import { TSESTree } from '@typescript-eslint/experimental-utils';
+import {
+  TSESTree,
+  AST_NODE_TYPES,
+} from '@typescript-eslint/experimental-utils';
 import { isTypeReference } from 'tsutils';
 import * as ts from 'typescript';
 import * as util from '../util';
 
 type Options = [
   {
-    allowAnnotationFromAny?: boolean;
+    allowVariableAnnotationFromAny?: boolean;
   },
 ];
 type MessageIds =
   | 'typeReferenceResolvesToAny'
   | 'variableDeclarationInitialisedToAnyWithoutAnnotation'
   | 'variableDeclarationInitialisedToAnyWithAnnotation'
+  | 'patternVariableDeclarationInitialisedToAny'
   | 'letVariableInitialisedToNullishAndNoAnnotation'
   | 'letVariableWithNoInitialAndNoAnnotation'
-  | 'variableDeclarationInitialisedToAnyArrayWithoutAnnotation'
   | 'loopVariableInitialisedToAny'
   | 'returnAny'
   | 'passedArgumentIsAny'
-  | 'assignmentValueIsAny';
+  | 'assignmentValueIsAny'
+  | 'updateExpressionIsAny'
+  | 'booleanTestIsAny'
+  | 'switchDiscriminantIsAny'
+  | 'switchCaseTestIsAny';
 
 export default util.createRule<Options, MessageIds>({
   name: 'no-unsafe-any',
@@ -36,24 +43,28 @@ export default util.createRule<Options, MessageIds>({
       variableDeclarationInitialisedToAnyWithAnnotation:
         'Variable declaration is initialised to `any` with an explicit type annotation, which is potentially unsafe. Prefer explicit type narrowing via type guards.',
       variableDeclarationInitialisedToAnyWithoutAnnotation:
-        'Variable declaration is initialised to `any` without an assertion or a type annotation.',
+        'Variable declaration is initialised to `any` without a type annotation.',
+      patternVariableDeclarationInitialisedToAny:
+        'Variable declaration is initialised to `any`.',
       letVariableInitialisedToNullishAndNoAnnotation:
         'Variable declared with {{kind}} and initialised to `null` or `undefined` is implicitly typed as `any`. Add an explicit type annotation.',
       letVariableWithNoInitialAndNoAnnotation:
         'Variable declared with {{kind}} with no initial value is implicitly typed as `any`.',
-      variableDeclarationInitialisedToAnyArrayWithoutAnnotation:
-        'Variable declaration is initialised to `any[]` without an assertion or a type annotation.',
       loopVariableInitialisedToAny: 'Loop variable is typed as `any`.',
       returnAny: 'The type of the return is `any`.',
       passedArgumentIsAny: 'The passed argument is `any`.',
       assignmentValueIsAny: 'The value being assigned is `any`.',
+      updateExpressionIsAny: 'The update expression variable is `any`.',
+      booleanTestIsAny: 'The {{kind}} test is `any`.',
+      switchDiscriminantIsAny: 'The switch discriminant is `any`.',
+      switchCaseTestIsAny: 'The switch case test is `any`.',
     },
     schema: [
       {
         type: 'object',
         additionalProperties: false,
         properties: {
-          allowAnnotationFromAny: {
+          allowVariableAnnotationFromAny: {
             type: 'boolean',
           },
         },
@@ -62,10 +73,10 @@ export default util.createRule<Options, MessageIds>({
   },
   defaultOptions: [
     {
-      allowAnnotationFromAny: false,
+      allowVariableAnnotationFromAny: false,
     },
   ],
-  create(context, [{ allowAnnotationFromAny }]) {
+  create(context, [{ allowVariableAnnotationFromAny }]) {
     const { program, esTreeNodeToTSNodeMap } = util.getParserServices(context);
     const checker = program.getTypeChecker();
     const sourceCode = context.getSourceCode();
@@ -89,11 +100,66 @@ export default util.createRule<Options, MessageIds>({
       );
     }
 
+    function isAnyOrAnyArrayType(node: ts.Node): boolean {
+      return isAnyType(node) || isAnyArrayType(node);
+    }
+
+    function reportVariableDeclarationInitialisedToAny(
+      node: TSESTree.VariableDeclarator,
+    ): void {
+      if (!node.id.typeAnnotation) {
+        return context.report({
+          node,
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+        });
+      }
+
+      // there is a type annotation
+
+      if (allowVariableAnnotationFromAny) {
+        // there is an annotation on the type, and the user indicated they are okay with the "unsafe" conversion
+        return;
+      }
+      if (
+        node.id.typeAnnotation.typeAnnotation.type ===
+        AST_NODE_TYPES.TSUnknownKeyword
+      ) {
+        // annotation with unknown is as safe as can be
+        return;
+      }
+
+      return context.report({
+        node,
+        messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
+      });
+    }
+
+    function checkDestructuringPattern(node: TSESTree.Node): void {
+      if (node.type === AST_NODE_TYPES.ObjectPattern) {
+        node.properties.forEach(prop => {
+          checkDestructuringPattern(prop.value ?? prop);
+        });
+      } else if (node.type === AST_NODE_TYPES.ArrayPattern) {
+        node.elements.forEach(el => {
+          checkDestructuringPattern(el);
+        });
+      } else {
+        const tsNode = esTreeNodeToTSNodeMap.get(node);
+        if (isAnyOrAnyArrayType(tsNode)) {
+          context.report({
+            node,
+            messageId: 'patternVariableDeclarationInitialisedToAny',
+          });
+        }
+      }
+    }
+
     return {
       // Handled by the no-explicit-any rule (with a fixer)
       //TSAnyKeyword(node): void {},
 
-      // typeReferenceResolvesToAny
+      // #region typeReferenceResolvesToAny
+
       TSTypeReference(node): void {
         const tsNode = esTreeNodeToTSNodeMap.get(node);
         if (!isAnyType(tsNode)) {
@@ -110,7 +176,10 @@ export default util.createRule<Options, MessageIds>({
         });
       },
 
-      // letVariableWithNoInitialAndNoAnnotation
+      // #endregion typeReferenceResolvesToAny
+
+      // #region letVariableWithNoInitialAndNoAnnotation
+
       'VariableDeclaration:matches([kind = "let"], [kind = "var"]) > VariableDeclarator:not([init])'(
         node: TSESTree.VariableDeclarator,
       ): void {
@@ -128,7 +197,10 @@ export default util.createRule<Options, MessageIds>({
         });
       },
 
-      // letVariableInitialisedToNullishAndNoAnnotation
+      // #endregion letVariableWithNoInitialAndNoAnnotation
+
+      // #region letVariableInitialisedToNullishAndNoAnnotation
+
       'VariableDeclaration:matches([kind = "let"], [kind = "var"]) > VariableDeclarator[init]'(
         node: TSESTree.VariableDeclarator,
       ): void {
@@ -151,102 +223,91 @@ export default util.createRule<Options, MessageIds>({
         }
       },
 
-      // variableDeclarationInitialisedToAnyWithAnnotation
-      // variableDeclarationInitialisedToAnyWithoutAnnotation
-      'VariableDeclaration > VariableDeclarator[init]'(
-        node: TSESTree.VariableDeclarator,
+      // #endregion letVariableInitialisedToNullishAndNoAnnotation
+
+      // #region variableDeclarationInitialisedToAnyWithAnnotation, variableDeclarationInitialisedToAnyWithoutAnnotation, patternVariableDeclarationInitialisedToAny
+
+      // const x = ...;
+      'VariableDeclaration > VariableDeclarator[init] > Identifier.id'(
+        node: TSESTree.Identifier,
       ): void {
-        if (!node.init || util.isTypeAssertion(node.init)) {
-          // type assertions are handled via their own selector
+        const parent = node.parent as TSESTree.VariableDeclarator;
+        /* istanbul ignore if */ if (!parent.init) {
           return;
         }
 
-        const tsNode = esTreeNodeToTSNodeMap.get(node.init);
-        if (!isAnyType(tsNode)) {
+        const tsNode = esTreeNodeToTSNodeMap.get(parent.init);
+        if (!isAnyType(tsNode) && !isAnyArrayType(tsNode)) {
           return;
         }
 
-        // the variable is initialised to any...
+        // the variable is initialised to any | any[]...
 
-        if (!node.id.typeAnnotation) {
-          return context.report({
-            node,
-            messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
-          });
-        }
-
-        // there is a type annotation
-
-        if (allowAnnotationFromAny) {
-          // there is an annotation on the type, and the user indicated they are okay with the "unsafe" conversion
-          return;
-        }
-
-        return context.report({
-          node,
-          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
-        });
+        reportVariableDeclarationInitialisedToAny(parent);
       },
-
-      // #region variableDeclarationInitialisedToAnyArrayWithoutAnnotation
-
-      // const x = []
+      // const x = [];
+      // this is a special case, because the type of [] is never[], but the variable gets typed as any[].
+      // this means it can't be caught by the above selector
       'VariableDeclaration > VariableDeclarator > ArrayExpression[elements.length = 0].init'(
         node: TSESTree.ArrayExpression,
       ): void {
         const parent = node.parent as TSESTree.VariableDeclarator;
+
         if (parent.id.typeAnnotation) {
+          // note that there is no way to fix the type, so you have to use a type annotation
+          // so we don't report variableDeclarationInitialisedToAnyWithAnnotation
           return;
         }
 
         context.report({
           node: parent,
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
         });
       },
-      [[
-        // const x = Array(...)
-        'VariableDeclaration > VariableDeclarator > CallExpression[callee.name = "Array"].init',
-        // const x = new Array(...)
-        'VariableDeclaration > VariableDeclarator > NewExpression[callee.name = "Array"].init',
-      ].join(', ')](
-        node: TSESTree.CallExpression | TSESTree.NewExpression,
+      // const { x } = ...;
+      'VariableDeclaration > VariableDeclarator[init] > ObjectPattern.id'(
+        node: TSESTree.ObjectPattern,
       ): void {
         const parent = node.parent as TSESTree.VariableDeclarator;
-        if (parent.id.typeAnnotation) {
+        /* istanbul ignore if */ if (!parent.init) {
           return;
         }
 
-        if (node.arguments.length > 1) {
-          // Array(1, 2) === [1, 2]
+        const tsNode = esTreeNodeToTSNodeMap.get(parent.init);
+        if (isAnyOrAnyArrayType(tsNode)) {
+          // the entire init value is any, so report the entire declaration
+          return reportVariableDeclarationInitialisedToAny(parent);
+        }
+
+        checkDestructuringPattern(node);
+      },
+      // const [x] = ...;
+      'VariableDeclaration > VariableDeclarator[init] > ArrayPattern.id'(
+        node: TSESTree.ArrayPattern,
+      ): void {
+        const parent = node.parent as TSESTree.VariableDeclarator;
+        /* istanbul ignore if */ if (!parent.init) {
           return;
         }
 
-        if (node.arguments.length === 1) {
-          // check if the 1 argument is a number, as Array(1) === [empty] === any[]
-          const tsNode = esTreeNodeToTSNodeMap.get(node.arguments[0]);
-          const type = checker.getTypeAtLocation(tsNode);
-          if (!util.isTypeFlagSetNonUnion(type, ts.TypeFlags.NumberLike)) {
-            return;
-          }
+        const tsNode = esTreeNodeToTSNodeMap.get(parent.init);
+        if (isAnyOrAnyArrayType(tsNode)) {
+          // the entire init value is any, so report the entire declaration
+          return reportVariableDeclarationInitialisedToAny(parent);
         }
 
-        context.report({
-          node: parent,
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
-        });
+        checkDestructuringPattern(node);
       },
 
-      // #endregion variableDeclarationInitialisedToAnyArrayWithoutAnnotation
+      // #endregion variableDeclarationInitialisedToAnyWithAnnotation, variableDeclarationInitialisedToAnyWithoutAnnotation, patternVariableDeclarationInitialisedToAny
 
-      // loopVariableInitialisedToAny
+      // #region loopVariableInitialisedToAny
+
       'ForOfStatement > VariableDeclaration.left > VariableDeclarator'(
         node: TSESTree.VariableDeclarator,
       ): void {
         const tsNode = esTreeNodeToTSNodeMap.get(node);
-        if (isAnyType(tsNode) || isAnyArrayType(tsNode)) {
+        if (isAnyOrAnyArrayType(tsNode)) {
           return context.report({
             node,
             messageId: 'loopVariableInitialisedToAny',
@@ -254,7 +315,10 @@ export default util.createRule<Options, MessageIds>({
         }
       },
 
-      // returnAny
+      // #endregion loopVariableInitialisedToAny
+
+      // #region returnAny
+
       'ReturnStatement[argument]'(node: TSESTree.ReturnStatement): void {
         const argument = util.nullThrows(
           node.argument,
@@ -262,7 +326,20 @@ export default util.createRule<Options, MessageIds>({
         );
         const tsNode = esTreeNodeToTSNodeMap.get(argument);
 
-        if (isAnyType(tsNode) || isAnyArrayType(tsNode)) {
+        if (isAnyOrAnyArrayType(tsNode)) {
+          context.report({
+            node,
+            messageId: 'returnAny',
+          });
+        }
+      },
+      // () => 1
+      'ArrowFunctionExpression > :not(TSESTree.BlockStatement).body'(
+        node: TSESTree.Expression,
+      ): void {
+        const tsNode = esTreeNodeToTSNodeMap.get(node);
+
+        if (isAnyOrAnyArrayType(tsNode)) {
           context.report({
             node,
             messageId: 'returnAny',
@@ -270,33 +347,121 @@ export default util.createRule<Options, MessageIds>({
         }
       },
 
-      // passedArgumentIsAny
+      // #endregion returnAny
+
+      // #region passedArgumentIsAny
+
       'CallExpression[arguments.length > 0]'(
         node: TSESTree.CallExpression,
       ): void {
         for (const argument of node.arguments) {
           const tsNode = esTreeNodeToTSNodeMap.get(argument);
 
-          if (isAnyType(tsNode) || isAnyArrayType(tsNode)) {
+          if (isAnyOrAnyArrayType(tsNode)) {
             context.report({
-              node,
+              node: argument,
               messageId: 'passedArgumentIsAny',
             });
           }
         }
       },
 
-      // assignmentValueIsAny
+      // #endregion passedArgumentIsAny
+
+      // #region assignmentValueIsAny
+
       AssignmentExpression(node): void {
         const tsNode = esTreeNodeToTSNodeMap.get(node.right);
 
-        if (isAnyType(tsNode) || isAnyArrayType(tsNode)) {
+        if (isAnyOrAnyArrayType(tsNode)) {
           context.report({
             node,
             messageId: 'assignmentValueIsAny',
           });
         }
       },
+
+      // #endregion assignmentValueIsAny
+
+      // #region updateExpressionIsAny
+
+      UpdateExpression(node): void {
+        const tsNode = esTreeNodeToTSNodeMap.get(node.argument);
+
+        if (isAnyType(tsNode)) {
+          context.report({
+            node,
+            messageId: 'updateExpressionIsAny',
+          });
+        }
+      },
+
+      // #endregion updateExpressionIsAny
+
+      // #region booleanTestIsAny
+
+      'IfStatement, WhileStatement, DoWhileStatement, ConditionalExpression'(
+        node:
+          | TSESTree.IfStatement
+          | TSESTree.WhileStatement
+          | TSESTree.DoWhileStatement
+          | TSESTree.ConditionalExpression,
+      ): void {
+        const tsNode = esTreeNodeToTSNodeMap.get(node.test);
+        const typeToText = {
+          [AST_NODE_TYPES.IfStatement]: 'if',
+          [AST_NODE_TYPES.WhileStatement]: 'while',
+          [AST_NODE_TYPES.DoWhileStatement]: 'do while',
+          [AST_NODE_TYPES.ConditionalExpression]: 'ternary',
+        };
+
+        if (isAnyOrAnyArrayType(tsNode)) {
+          context.report({
+            node: node.test,
+            messageId: 'booleanTestIsAny',
+            data: {
+              kind: typeToText[node.type],
+            },
+          });
+        }
+      },
+
+      // #endregion booleanTestIsAny
+
+      // #region switchDiscriminantIsAny
+
+      SwitchStatement(node): void {
+        const tsNode = esTreeNodeToTSNodeMap.get(node.discriminant);
+
+        if (isAnyOrAnyArrayType(tsNode)) {
+          context.report({
+            node: node.discriminant,
+            messageId: 'switchDiscriminantIsAny',
+          });
+        }
+      },
+
+      // #endregion switchDiscriminantIsAny
+
+      // #region switchCaseTestIsAny
+
+      'SwitchCase[test]'(node: TSESTree.SwitchCase): void {
+        const tsNode = esTreeNodeToTSNodeMap.get(
+          util.nullThrows(
+            node.test,
+            util.NullThrowsReasons.MissingToken('test', 'SwitchCase'),
+          ),
+        );
+
+        if (isAnyOrAnyArrayType(tsNode)) {
+          context.report({
+            node,
+            messageId: 'switchCaseTestIsAny',
+          });
+        }
+      },
+
+      // #endregion switchCaseTestIsAny
     };
   },
 });

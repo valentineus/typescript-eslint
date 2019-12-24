@@ -24,7 +24,7 @@ ruleTester.run('no-unsafe-any', rule, {
         const x: any = 1;
         const y: number = x;
       `,
-      options: [{ allowAnnotationFromAny: true }],
+      options: [{ allowVariableAnnotationFromAny: true }],
     },
     'const a = Array("str");',
     'const a = ["str"];',
@@ -37,6 +37,13 @@ ruleTester.run('no-unsafe-any', rule, {
     'x = 1',
     'function foo(arg: string) { return arg; }',
     'function foo() { return 1; }',
+    '1++;',
+    'if (1) {}',
+    'while (1) {}',
+    'do {} while (1)',
+    '(1) ? 1 : 2;',
+    'switch (1) { case 1: }',
+    'switch (1) { default: }',
   ],
   invalid: [
     // typeReferenceResolvesToAny
@@ -162,50 +169,12 @@ let a: string | null = null, b = null;
     }),
 
     // variableDeclarationInitialisedToAnyWithoutAnnotation
-    {
-      code: `
-const a: any = 1;
-
-const b = a;
-const c = a + 1;
-      `,
-      options: [{ allowAnnotationFromAny: false }],
-      errors: [
-        {
-          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
-          line: 4,
-        },
-        {
-          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
-          line: 5,
-        },
-      ],
-    },
-
-    // variableDeclarationInitialisedToAnyWithAnnotation
-    {
-      code: `
-const a: any = 1;
-
-const b: number = a;
-const c: number = a + 1;
-      `,
-      options: [{ allowAnnotationFromAny: false }],
-      errors: [
-        {
-          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
-          line: 4,
-        },
-        {
-          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
-          line: 5,
-        },
-      ],
-    },
-
-    // variableDeclarationInitialisedToAnyArrayWithoutAnnotation
     ...batchedSingleLineTests({
       code: `
+const b = (1 as any);
+const c = (1 as any) + 1;
+const { baz } = (1 as any);
+
 const a = [];
 const b = Array();
 const c = new Array();
@@ -214,29 +183,36 @@ const e = new Array(1);
       `,
       errors: [
         {
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
           line: 2,
         },
         {
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
           line: 3,
         },
         {
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
           line: 4,
         },
         {
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
-          line: 5,
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 6,
         },
         {
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
-          line: 6,
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 7,
+        },
+        {
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 8,
+        },
+        {
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 9,
+        },
+        {
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 10,
         },
       ],
     }),
@@ -247,12 +223,80 @@ const e = new Array(1);
       `,
       errors: [
         {
-          messageId:
-            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
           line: 3,
         },
       ],
     },
+
+    // variableDeclarationInitialisedToAnyWithAnnotation
+    ...batchedSingleLineTests({
+      code: `
+const bbbb: number = (1 as any);
+const c: number = (1 as any) + 1;
+      `,
+      options: [{ allowVariableAnnotationFromAny: false }],
+      errors: [
+        {
+          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
+          line: 2,
+        },
+        {
+          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
+          line: 3,
+        },
+      ],
+    }),
+
+    // patternVariableDeclarationInitialisedToAny
+    ...batchedSingleLineTests({
+      code: `
+const { x, y } = { x: 1 as any, y: 1 as any };
+const { x, y } = { x: 1 } as { x: number, y: any };
+const { x: { y } } = { x: { y: 1 as any } };
+const { x: { y: [a, b] } } = { x: { y: [1] } } as { x: { y: any[] } };
+const [a,b] = [1 as any, 2 as any];
+const [{ a }] = [1 as any];
+      `,
+      errors: [
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 2,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 2,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 3,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 4,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 5,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 5,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 6,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 6,
+        },
+        {
+          messageId: 'patternVariableDeclarationInitialisedToAny',
+          line: 7,
+        },
+      ],
+    }),
 
     // loopVariableInitialisedToAny
     ...batchedSingleLineTests({
@@ -277,6 +321,9 @@ for (const x of ([] as any[])) {}
       code: `
 function foo(arg: any) { return arg; }
 function foo(arg: any[]) { return arg; }
+function foo() { return (1 as any); }
+const foo = () => (1 as any);
+const foo = (arg: any[]) => arg;
       `,
       errors: [
         {
@@ -286,6 +333,18 @@ function foo(arg: any[]) { return arg; }
         {
           messageId: 'returnAny',
           line: 3,
+        },
+        {
+          messageId: 'returnAny',
+          line: 4,
+        },
+        {
+          messageId: 'returnAny',
+          line: 5,
+        },
+        {
+          messageId: 'returnAny',
+          line: 6,
         },
       ],
     }),
@@ -356,6 +415,98 @@ x.y = (1 as any);
         {
           messageId: 'assignmentValueIsAny',
           line: 7,
+        },
+      ],
+    }),
+
+    // updateExpressionIsAny
+    ...batchedSingleLineTests({
+      code: `
+(1 as any)++;
+(1 as any)--;
+++(1 as any);
+--(1 as any);
+      `,
+      errors: [
+        {
+          messageId: 'updateExpressionIsAny',
+          line: 2,
+        },
+        {
+          messageId: 'updateExpressionIsAny',
+          line: 3,
+        },
+        {
+          messageId: 'updateExpressionIsAny',
+          line: 4,
+        },
+        {
+          messageId: 'updateExpressionIsAny',
+          line: 5,
+        },
+      ],
+    }),
+
+    // booleanTestIsAny
+    ...batchedSingleLineTests({
+      code: `
+if (1 as any) {}
+while (1 as any) {}
+do {} while (1 as any)
+;(1 as any) ? 1 : 2;
+      `,
+      errors: [
+        {
+          messageId: 'booleanTestIsAny',
+          line: 2,
+        },
+        {
+          messageId: 'booleanTestIsAny',
+          line: 3,
+        },
+        {
+          messageId: 'booleanTestIsAny',
+          line: 4,
+        },
+        {
+          messageId: 'booleanTestIsAny',
+          line: 5,
+        },
+      ],
+    }),
+
+    // switchDiscriminantIsAny
+    ...batchedSingleLineTests({
+      code: `
+switch (1 as any) {}
+switch (1 as any[]) {}
+      `,
+      errors: [
+        {
+          messageId: 'switchDiscriminantIsAny',
+          line: 2,
+        },
+        {
+          messageId: 'switchDiscriminantIsAny',
+          line: 3,
+        },
+      ],
+    }),
+
+    // switchCaseTestIsAny
+    ...batchedSingleLineTests({
+      code: `
+switch (1) { case (1 as any): }
+switch (1) { case (1 as any[]): }
+      `,
+      errors: [
+        {
+          messageId: 'switchCaseTestIsAny',
+          line: 2,
+        },
+        {
+          messageId: 'switchCaseTestIsAny',
+          line: 3,
         },
       ],
     }),
