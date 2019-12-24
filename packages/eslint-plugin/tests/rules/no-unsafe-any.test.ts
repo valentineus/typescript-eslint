@@ -26,6 +26,17 @@ ruleTester.run('no-unsafe-any', rule, {
       `,
       options: [{ allowAnnotationFromAny: true }],
     },
+    'const a = Array("str");',
+    'const a = ["str"];',
+    `
+      declare const arg: string | number;
+      const a = Array(arg); // typeof === (string | number)[];
+    `,
+    'for (const x of [1]) {}',
+    'foo(1)',
+    'x = 1',
+    'function foo(arg: string) { return arg; }',
+    'function foo() { return 1; }',
   ],
   invalid: [
     // typeReferenceResolvesToAny
@@ -62,7 +73,7 @@ function foo(): T {}
       ],
     },
 
-    // variableLetWithNoInitialAndNoAnnotation
+    // letVariableWithNoInitialAndNoAnnotation
     ...batchedSingleLineTests({
       code: `
 let x;
@@ -73,37 +84,37 @@ let x, y = 1;
       `,
       errors: [
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 2,
         },
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 3,
         },
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 4,
         },
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 4,
         },
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 5,
         },
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 5,
         },
         {
-          messageId: 'variableLetWithNoInitialAndNoAnnotation',
+          messageId: 'letVariableWithNoInitialAndNoAnnotation',
           line: 6,
         },
       ],
     }),
 
-    // variableLetInitialisedToNullishAndNoAnnotation
+    // letVariableInitialisedToNullishAndNoAnnotation
     ...batchedSingleLineTests({
       code: `
 let a = null;
@@ -113,35 +124,35 @@ let a: string | null = null, b = null;
       `,
       errors: [
         {
-          messageId: 'variableLetInitialisedToNullishAndNoAnnotation',
+          messageId: 'letVariableInitialisedToNullishAndNoAnnotation',
           line: 2,
           data: {
             kind: 'let',
           },
         },
         {
-          messageId: 'variableLetInitialisedToNullishAndNoAnnotation',
+          messageId: 'letVariableInitialisedToNullishAndNoAnnotation',
           line: 3,
           data: {
             kind: 'let',
           },
         },
         {
-          messageId: 'variableLetInitialisedToNullishAndNoAnnotation',
+          messageId: 'letVariableInitialisedToNullishAndNoAnnotation',
           line: 4,
           data: {
             kind: 'var',
           },
         },
         {
-          messageId: 'variableLetInitialisedToNullishAndNoAnnotation',
+          messageId: 'letVariableInitialisedToNullishAndNoAnnotation',
           line: 4,
           data: {
             kind: 'var',
           },
         },
         {
-          messageId: 'variableLetInitialisedToNullishAndNoAnnotation',
+          messageId: 'letVariableInitialisedToNullishAndNoAnnotation',
           line: 5,
           data: {
             kind: 'let',
@@ -150,44 +161,203 @@ let a: string | null = null, b = null;
       ],
     }),
 
-    // variableDeclarationInitToAnyWithAnnotation
+    // variableDeclarationInitialisedToAnyWithoutAnnotation
     {
       code: `
-const x: any = 1;
-const y: number = x;
-const z: number = x + 1;
+const a: any = 1;
+
+const b = a;
+const c = a + 1;
       `,
       options: [{ allowAnnotationFromAny: false }],
       errors: [
         {
-          messageId: 'variableDeclarationInitToAnyWithAnnotation',
-          line: 3,
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 4,
         },
         {
-          messageId: 'variableDeclarationInitToAnyWithAnnotation',
-          line: 4,
+          messageId: 'variableDeclarationInitialisedToAnyWithoutAnnotation',
+          line: 5,
         },
       ],
     },
 
-    // variableDeclarationInitToAnyWithoutAnnotation
+    // variableDeclarationInitialisedToAnyWithAnnotation
     {
       code: `
-const x: any = 1;
-const y = x;
-const z = x + 1;
+const a: any = 1;
+
+const b: number = a;
+const c: number = a + 1;
       `,
       options: [{ allowAnnotationFromAny: false }],
       errors: [
         {
-          messageId: 'variableDeclarationInitToAnyWithoutAnnotation',
-          line: 3,
+          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
+          line: 4,
         },
         {
-          messageId: 'variableDeclarationInitToAnyWithoutAnnotation',
-          line: 4,
+          messageId: 'variableDeclarationInitialisedToAnyWithAnnotation',
+          line: 5,
         },
       ],
     },
+
+    // variableDeclarationInitialisedToAnyArrayWithoutAnnotation
+    ...batchedSingleLineTests({
+      code: `
+const a = [];
+const b = Array();
+const c = new Array();
+const d = Array(1);
+const e = new Array(1);
+      `,
+      errors: [
+        {
+          messageId:
+            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          line: 2,
+        },
+        {
+          messageId:
+            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          line: 3,
+        },
+        {
+          messageId:
+            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          line: 4,
+        },
+        {
+          messageId:
+            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          line: 5,
+        },
+        {
+          messageId:
+            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          line: 6,
+        },
+      ],
+    }),
+    {
+      code: `
+        const a = 1;
+        const b = new Array(a);
+      `,
+      errors: [
+        {
+          messageId:
+            'variableDeclarationInitialisedToAnyArrayWithoutAnnotation',
+          line: 3,
+        },
+      ],
+    },
+
+    // loopVariableInitialisedToAny
+    ...batchedSingleLineTests({
+      code: `
+for (const x of ([] as any)) {}
+for (const x of ([] as any[])) {}
+      `,
+      errors: [
+        {
+          messageId: 'loopVariableInitialisedToAny',
+          line: 2,
+        },
+        {
+          messageId: 'loopVariableInitialisedToAny',
+          line: 3,
+        },
+      ],
+    }),
+
+    // returnAny
+    ...batchedSingleLineTests({
+      code: `
+function foo(arg: any) { return arg; }
+function foo(arg: any[]) { return arg; }
+      `,
+      errors: [
+        {
+          messageId: 'returnAny',
+          line: 2,
+        },
+        {
+          messageId: 'returnAny',
+          line: 3,
+        },
+      ],
+    }),
+
+    // passedArgumentIsAny
+    ...batchedSingleLineTests({
+      code: `
+foo((1 as any));
+foo((1 as any[]));
+foo((1 as any[]), (1 as any));
+foo(1, (1 as any));
+      `,
+      errors: [
+        {
+          messageId: 'passedArgumentIsAny',
+          line: 2,
+        },
+        {
+          messageId: 'passedArgumentIsAny',
+          line: 3,
+        },
+        {
+          messageId: 'passedArgumentIsAny',
+          line: 4,
+        },
+        {
+          messageId: 'passedArgumentIsAny',
+          line: 4,
+        },
+        {
+          messageId: 'passedArgumentIsAny',
+          line: 5,
+        },
+      ],
+    }),
+
+    // assignmentValueIsAny
+    ...batchedSingleLineTests({
+      code: `
+x = (1 as any);
+x = (1 as any[]);
+x += (1 as any);
+x -= (1 as any);
+x |= (1 as any);
+x.y = (1 as any);
+      `,
+      errors: [
+        {
+          messageId: 'assignmentValueIsAny',
+          line: 2,
+        },
+        {
+          messageId: 'assignmentValueIsAny',
+          line: 3,
+        },
+        {
+          messageId: 'assignmentValueIsAny',
+          line: 4,
+        },
+        {
+          messageId: 'assignmentValueIsAny',
+          line: 5,
+        },
+        {
+          messageId: 'assignmentValueIsAny',
+          line: 6,
+        },
+        {
+          messageId: 'assignmentValueIsAny',
+          line: 7,
+        },
+      ],
+    }),
   ],
 });
